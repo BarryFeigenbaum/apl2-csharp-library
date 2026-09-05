@@ -47,7 +47,7 @@ namespace APL2
             if (context == null)
                 throw new ArgumentNullException(nameof(context));
 
-            GetStack().Push(context);
+            GetStack().Push(context.Clone());
         }
 
         public static APLContext Pop()

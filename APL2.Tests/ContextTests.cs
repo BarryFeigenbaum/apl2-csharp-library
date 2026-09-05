@@ -30,13 +30,17 @@ namespace APL2.Tests
             APLContext.Push(context);
             try
             {
-                Assert.Same(context, APLRuntime.Current);
+                Assert.NotSame(context, APLRuntime.Current);
                 Assert.Equal(1, APLRuntime.Current.IndexOrigin);
                 Assert.Equal(0, original.IndexOrigin);
             }
             finally
             {
-                Assert.Same(context, APLContext.Pop());
+                var popped = APLContext.Pop();
+                Assert.Equal(context.IndexOrigin, popped.IndexOrigin);
+                Assert.Equal(context.PrintWidth, popped.PrintWidth);
+                Assert.Equal(context.PrintPrecision, popped.PrintPrecision);
+                Assert.Equal(context.ComparisonTolerance, popped.ComparisonTolerance, 15);
             }
 
             Assert.Same(original, APLRuntime.Current);
@@ -182,6 +186,25 @@ namespace APL2.Tests
             try
             {
                 Assert.Equal("3.142", await FormatAsync(new FloatingPointType(3.1415926535)));
+            }
+            finally
+            {
+                APLContext.Pop();
+            }
+        }
+
+        [Fact]
+        public void ComparisonTolerance_RemainsHashSetCompatible()
+        {
+            var values = new HashSet<APLType>();
+            var context = APLContext.Create();
+            context.ComparisonTolerance = 1e-12;
+
+            APLContext.Push(context);
+            try
+            {
+                Assert.True(values.Add(new IntegerType(1)));
+                Assert.False(values.Add(new FloatingPointType(1.0 + 5e-13)));
             }
             finally
             {

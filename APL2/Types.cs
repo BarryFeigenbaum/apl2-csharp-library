@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Text;
 using APL2;
 
 namespace APL2.Types
@@ -64,8 +65,6 @@ namespace APL2.Types
         {
             if (value is BooleanType booleanValue)
                 return booleanValue.Value.GetHashCode();
-            if (value is IntegerType integerValue)
-                return integerValue.Value.GetHashCode();
             if (value is StringType stringValue)
                 return stringValue.Value.GetHashCode();
             return 0;
@@ -265,6 +264,15 @@ namespace APL2.Types
 
         public APLType GetElement(params int[] indices)
         {
+            if (Rank == 1 && indices.Length == 1)
+            {
+                int adjustedIndex = indices[0] - APLRuntime.Current.IndexOrigin;
+                if (adjustedIndex < 0 || adjustedIndex >= Elements.Count)
+                    throw new IndexOutOfRangeException("Index out of bounds");
+
+                return Elements[adjustedIndex];
+            }
+
             return Elements[ToFlatIndex(indices)];
         }
 
@@ -309,8 +317,30 @@ namespace APL2.Types
             return new ArrayType(transposed, new[] { cols, rows });
         }
 
-        public override string ToString() =>
-            APLFormatting.ConstrainWidth($"[{string.Join(" ", Elements.Select(element => element.ToString()))}]");
+        public override string ToString()
+        {
+            int printWidth = Math.Max(4, APLRuntime.Current.PrintWidth);
+            int maxVisibleWidth = printWidth - 3;
+            var builder = new StringBuilder("[");
+
+            for (int i = 0; i < Elements.Count; i++)
+            {
+                string separator = i == 0 ? string.Empty : " ";
+                string elementText = Elements[i].ToString();
+
+                if (builder.Length + separator.Length + elementText.Length > maxVisibleWidth)
+                    return builder.Length == 1 ? APLFormatting.ConstrainWidth("[...]") : builder.ToString() + "...";
+
+                builder.Append(separator);
+                builder.Append(elementText);
+            }
+
+            if (builder.Length + 1 > printWidth)
+                return APLFormatting.ConstrainWidth(builder.ToString() + "]");
+
+            builder.Append(']');
+            return builder.ToString();
+        }
 
         public override bool Equals(object obj) => obj is APLType other && APLTypeComparer.AreEqual(this, other);
 
