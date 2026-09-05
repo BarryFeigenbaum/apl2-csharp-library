@@ -32,7 +32,7 @@ namespace APL2
 
         public static APLContext Pop() => APLRuntime.Pop();
 
-        public static APLContext Current() => APLRuntime.Current;
+        public static APLContext Current => APLRuntime.Current;
     }
 
     public static class APLRuntime

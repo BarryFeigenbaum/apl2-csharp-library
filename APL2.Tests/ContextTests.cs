@@ -126,6 +126,13 @@ namespace APL2.Tests
         }
 
         [Fact]
+        public void BooleanFormatting_RemainsStable()
+        {
+            Assert.Equal("1", new BooleanType(true).ToString());
+            Assert.Equal("0", new BooleanType(false).ToString());
+        }
+
+        [Fact]
         public void PrintWidth_AffectsArrayDisplayTruncation()
         {
             var array = new ArrayType(new List<APLType>

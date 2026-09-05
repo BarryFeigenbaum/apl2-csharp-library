@@ -46,17 +46,19 @@ namespace APL2.Types
                        leftArray.Elements.Zip(rightArray.Elements, AreEqual).All(equal => equal);
             }
 
-            if (TryGetComplexParts(left, out var leftReal, out var leftImaginary) &&
-                TryGetComplexParts(right, out var rightReal, out var rightImaginary))
-            {
+            if (left is BooleanType || right is BooleanType)
+                return left is BooleanType leftBoolean &&
+                       right is BooleanType rightBoolean &&
+                       leftBoolean.Value == rightBoolean.Value;
+
+            if (left is StringType || right is StringType)
+                return left is StringType leftString &&
+                       right is StringType rightString &&
+                       leftString.Value == rightString.Value;
+
+            if (TryGetNumericParts(left, out var leftReal, out var leftImaginary) &&
+                TryGetNumericParts(right, out var rightReal, out var rightImaginary))
                 return NearlyEqual(leftReal, rightReal) && NearlyEqual(leftImaginary, rightImaginary);
-            }
-
-            if (left is BooleanType leftBoolean && right is BooleanType rightBoolean)
-                return leftBoolean.Value == rightBoolean.Value;
-
-            if (left is StringType leftString && right is StringType rightString)
-                return leftString.Value == rightString.Value;
 
             return false;
         }
@@ -73,7 +75,7 @@ namespace APL2.Types
         private static bool NearlyEqual(double left, double right) =>
             Math.Abs(left - right) <= APLRuntime.Current.ComparisonTolerance;
 
-        private static bool TryGetComplexParts(APLType value, out double real, out double imaginary)
+        private static bool TryGetNumericParts(APLType value, out double real, out double imaginary)
         {
             if (value is IntegerType integerValue)
             {
@@ -320,15 +322,15 @@ namespace APL2.Types
         public override string ToString()
         {
             int printWidth = Math.Max(4, APLRuntime.Current.PrintWidth);
-            int maxVisibleWidth = printWidth - 3;
             var builder = new StringBuilder("[");
 
             for (int i = 0; i < Elements.Count; i++)
             {
                 string separator = i == 0 ? string.Empty : " ";
                 string elementText = Elements[i].ToString();
+                int suffixWidth = i == Elements.Count - 1 ? 1 : 3;
 
-                if (builder.Length + separator.Length + elementText.Length > maxVisibleWidth)
+                if (builder.Length + separator.Length + elementText.Length + suffixWidth > printWidth)
                     return builder.Length == 1 ? APLFormatting.ConstrainWidth("[...]") : builder.ToString() + "...";
 
                 builder.Append(separator);
@@ -344,6 +346,17 @@ namespace APL2.Types
 
         public override bool Equals(object obj) => obj is APLType other && APLTypeComparer.AreEqual(this, other);
 
-        public override int GetHashCode() => 0;
+        public override int GetHashCode()
+        {
+            unchecked
+            {
+                int hash = 17;
+                foreach (int dimension in Shape)
+                    hash = (hash * 31) + dimension;
+                foreach (APLType element in Elements)
+                    hash = (hash * 31) + element.GetHashCode();
+                return hash;
+            }
+        }
     }
 }
