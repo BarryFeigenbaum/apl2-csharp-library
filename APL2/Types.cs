@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
+using APL2;
 
 namespace APL2.Types
 {
@@ -10,6 +12,95 @@ namespace APL2.Types
         public abstract APLType DeepCopy();
         public abstract int GetRank();
         public abstract int[] GetShape();
+    }
+
+    internal static class APLFormatting
+    {
+        public static string FormatNumber(double value) =>
+            value.ToString($"G{Math.Max(1, APLRuntime.Current.PrintPrecision)}", CultureInfo.InvariantCulture);
+
+        public static string ConstrainWidth(string value)
+        {
+            int printWidth = Math.Max(4, APLRuntime.Current.PrintWidth);
+            if (value.Length <= printWidth)
+                return value;
+
+            return value.Substring(0, printWidth - 3) + "...";
+        }
+    }
+
+    internal static class APLTypeComparer
+    {
+        public static bool AreEqual(APLType left, APLType right)
+        {
+            if (ReferenceEquals(left, right))
+                return true;
+            if (left == null || right == null)
+                return false;
+
+            if (left is ArrayType leftArray && right is ArrayType rightArray)
+            {
+                return leftArray.Shape.SequenceEqual(rightArray.Shape) &&
+                       leftArray.Elements.Count == rightArray.Elements.Count &&
+                       leftArray.Elements.Zip(rightArray.Elements, AreEqual).All(equal => equal);
+            }
+
+            if (TryGetComplexParts(left, out var leftReal, out var leftImaginary) &&
+                TryGetComplexParts(right, out var rightReal, out var rightImaginary))
+            {
+                return NearlyEqual(leftReal, rightReal) && NearlyEqual(leftImaginary, rightImaginary);
+            }
+
+            if (left is BooleanType leftBoolean && right is BooleanType rightBoolean)
+                return leftBoolean.Value == rightBoolean.Value;
+
+            if (left is StringType leftString && right is StringType rightString)
+                return leftString.Value == rightString.Value;
+
+            return false;
+        }
+
+        public static int GetHashCode(APLType value)
+        {
+            if (value is BooleanType booleanValue)
+                return booleanValue.Value.GetHashCode();
+            if (value is IntegerType integerValue)
+                return integerValue.Value.GetHashCode();
+            if (value is StringType stringValue)
+                return stringValue.Value.GetHashCode();
+            return 0;
+        }
+
+        private static bool NearlyEqual(double left, double right) =>
+            Math.Abs(left - right) <= APLRuntime.Current.ComparisonTolerance;
+
+        private static bool TryGetComplexParts(APLType value, out double real, out double imaginary)
+        {
+            if (value is IntegerType integerValue)
+            {
+                real = integerValue.Value;
+                imaginary = 0.0;
+                return true;
+            }
+
+            if (value is FloatingPointType floatingPointValue)
+            {
+                real = floatingPointValue.Value;
+                imaginary = 0.0;
+                return true;
+            }
+
+            if (value is ComplexType complexValue)
+            {
+                real = complexValue.Real;
+                imaginary = complexValue.Imaginary;
+                return true;
+            }
+
+            real = 0.0;
+            imaginary = 0.0;
+            return false;
+        }
     }
 
     public abstract class Scalar : APLType
@@ -36,6 +127,9 @@ namespace APL2.Types
         public override double ToNumeric() => Value ? 1.0 : 0.0;
         public override bool ToBoolean() => Value;
         public override string ToCharacter() => Value ? "1" : "0";
+        public override string ToString() => ToCharacter();
+        public override bool Equals(object obj) => obj is APLType other && APLTypeComparer.AreEqual(this, other);
+        public override int GetHashCode() => APLTypeComparer.GetHashCode(this);
     }
 
     public class IntegerType : Scalar
@@ -52,6 +146,9 @@ namespace APL2.Types
         public override double ToNumeric() => Value;
         public override bool ToBoolean() => Value != 0;
         public override string ToCharacter() => ((char)Value).ToString();
+        public override string ToString() => Value.ToString(CultureInfo.InvariantCulture);
+        public override bool Equals(object obj) => obj is APLType other && APLTypeComparer.AreEqual(this, other);
+        public override int GetHashCode() => APLTypeComparer.GetHashCode(this);
     }
 
     public class FloatingPointType : Scalar
@@ -69,6 +166,9 @@ namespace APL2.Types
         public override double ToNumeric() => Value;
         public override bool ToBoolean() => Math.Abs(Value) > EPSILON;
         public override string ToCharacter() => ((char)(int)Value).ToString();
+        public override string ToString() => APLFormatting.FormatNumber(Value);
+        public override bool Equals(object obj) => obj is APLType other && APLTypeComparer.AreEqual(this, other);
+        public override int GetHashCode() => APLTypeComparer.GetHashCode(this);
     }
 
     public class ComplexType : Scalar
@@ -88,6 +188,9 @@ namespace APL2.Types
         public override double ToNumeric() => Math.Sqrt(Real * Real + Imaginary * Imaginary);
         public override bool ToBoolean() => Math.Abs(Real) > EPSILON || Math.Abs(Imaginary) > EPSILON;
         public override string ToCharacter() => ((char)(int)Real).ToString();
+        public override string ToString() => $"{APLFormatting.FormatNumber(Real)}J{APLFormatting.FormatNumber(Imaginary)}";
+        public override bool Equals(object obj) => obj is APLType other && APLTypeComparer.AreEqual(this, other);
+        public override int GetHashCode() => APLTypeComparer.GetHashCode(this);
 
         public ComplexType Add(ComplexType other) => 
             new ComplexType(Real + other.Real, Imaginary + other.Imaginary);
@@ -125,6 +228,9 @@ namespace APL2.Types
         public override double ToNumeric() => double.TryParse(Value, out var result) ? result : 0.0;
         public override bool ToBoolean() => Value.Length > 0;
         public override string ToCharacter() => Value.Length > 0 ? Value[0].ToString() : "\0";
+        public override string ToString() => Value;
+        public override bool Equals(object obj) => obj is APLType other && APLTypeComparer.AreEqual(this, other);
+        public override int GetHashCode() => APLTypeComparer.GetHashCode(this);
     }
 
     public class ArrayType : APLType
@@ -159,21 +265,23 @@ namespace APL2.Types
 
         public APLType GetElement(params int[] indices)
         {
-            if (indices.Length == 1)
-                return Elements[indices[0]];
-            int flatIndex = ToFlatIndex(indices);
-            return Elements[flatIndex];
+            return Elements[ToFlatIndex(indices)];
         }
 
         private int ToFlatIndex(int[] indices)
         {
+            if (indices.Length != Rank)
+                throw new ArgumentException("Incorrect number of indices");
+
+            int indexOrigin = APLRuntime.Current.IndexOrigin;
             int flatIndex = 0;
             int multiplier = 1;
             for (int i = Rank - 1; i >= 0; i--)
             {
-                if (indices[i] < 0 || indices[i] >= Shape[i])
+                int adjustedIndex = indices[i] - indexOrigin;
+                if (adjustedIndex < 0 || adjustedIndex >= Shape[i])
                     throw new IndexOutOfRangeException($"Index out of bounds");
-                flatIndex += indices[i] * multiplier;
+                flatIndex += adjustedIndex * multiplier;
                 multiplier *= Shape[i];
             }
             return flatIndex;
@@ -200,5 +308,12 @@ namespace APL2.Types
                     transposed.Add(Elements[i * cols + j]);
             return new ArrayType(transposed, new[] { cols, rows });
         }
+
+        public override string ToString() =>
+            APLFormatting.ConstrainWidth($"[{string.Join(" ", Elements.Select(element => element.ToString()))}]");
+
+        public override bool Equals(object obj) => obj is APLType other && APLTypeComparer.AreEqual(this, other);
+
+        public override int GetHashCode() => 0;
     }
 }
