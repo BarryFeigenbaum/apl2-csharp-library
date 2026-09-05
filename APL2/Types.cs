@@ -73,7 +73,7 @@ namespace APL2.Types
         }
 
         private static bool NearlyEqual(double left, double right) =>
-            Math.Abs(left - right) <= APLRuntime.Current.ComparisonTolerance;
+            left == right || Math.Abs(left - right) <= APLRuntime.Current.ComparisonTolerance;
 
         private static bool TryGetNumericParts(APLType value, out double real, out double imaginary)
         {
@@ -229,7 +229,7 @@ namespace APL2.Types
         public override double ToNumeric() => double.TryParse(Value, out var result) ? result : 0.0;
         public override bool ToBoolean() => Value.Length > 0;
         public override string ToCharacter() => Value.Length > 0 ? Value[0].ToString() : "\0";
-        public override string ToString() => Value;
+        public override string ToString() => APLFormatting.ConstrainWidth(Value);
         public override bool Equals(object obj) => obj is APLType other && APLTypeComparer.AreEqual(this, other);
         public override int GetHashCode() => APLTypeComparer.GetHashCode(this);
     }
@@ -354,7 +354,7 @@ namespace APL2.Types
                 foreach (int dimension in Shape)
                     hash = (hash * 31) + dimension;
                 foreach (APLType element in Elements)
-                    hash = (hash * 31) + element.GetHashCode();
+                    hash = (hash * 31) + APLTypeComparer.GetHashCode(element);
                 return hash;
             }
         }

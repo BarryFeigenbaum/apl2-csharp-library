@@ -162,6 +162,23 @@ namespace APL2.Tests
         }
 
         [Fact]
+        public void PrintWidth_AffectsStringDisplay()
+        {
+            var context = APLContext.Create();
+            context.PrintWidth = 6;
+
+            APLContext.Push(context);
+            try
+            {
+                Assert.Equal("abc...", new StringType("abcdefgh").ToString());
+            }
+            finally
+            {
+                APLContext.Pop();
+            }
+        }
+
+        [Fact]
         public void ComparisonTolerance_AffectsEqualityChecks()
         {
             var left = new FloatingPointType(1.0);
@@ -217,6 +234,15 @@ namespace APL2.Tests
             {
                 APLContext.Pop();
             }
+        }
+
+        [Fact]
+        public void ComparisonTolerance_KeepsArrayHashesCompatible()
+        {
+            var values = new HashSet<APLType>();
+
+            Assert.True(values.Add(new ArrayType(new List<APLType> { new IntegerType(1) })));
+            Assert.False(values.Add(new ArrayType(new List<APLType> { new FloatingPointType(1.0) })));
         }
 
         private static async Task<string> FormatAsync(APLType value)
